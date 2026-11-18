@@ -6,17 +6,22 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -26,6 +31,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,13 +40,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+// CardDefaults not needed (Card takes color directly in miuix 0.4.7)
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.lightColorScheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -82,58 +95,146 @@ fun RootCheckerApp() {
 
     LaunchedEffect(Unit) { runCheck() }
 
+    val scrollBehavior = MiuixScrollBehavior(state = rememberTopAppBarState())
+
     Scaffold(
         topBar = {
-            SmallTopAppBar(title = "Yahya's Checker")
-        }
+            TopAppBar(
+                title = "Yahya's Checker",
+                scrollBehavior = scrollBehavior
+            )
+        },
+        contentWindowInsets = WindowInsets.statusBars
     ) { padding ->
-        Column(
+        val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .overScrollVertical()
+                .scrollEndHaptic()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .padding(horizontal = 12.dp),
+            contentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + 12.dp,
+                bottom = bottomPadding + 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            overscrollEffect = null
         ) {
-            StatusCard(result = result, checking = checking)
-
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = { runCheck() },
-                enabled = !checking
-            ) {
-                Text(text = if (checking) "Kontrol ediliyor..." else "Tekrar kontrol et")
+            item {
+                StatusCard(result = result, checking = checking)
             }
-
-            DetailsCard(result = result)
+            item {
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = { runCheck() },
+                    enabled = !checking,
+                    colors = ButtonDefaults.buttonColorsPrimary()
+                ) {
+                    Text(text = if (checking) "Kontrol ediliyor..." else "Tekrar kontrol et")
+                }
+            }
+            item {
+                InfoCard(result = result)
+            }
+            item {
+                DetailsCard(result = result)
+            }
         }
     }
 }
 
 @Composable
 fun StatusCard(result: RootResult?, checking: Boolean) {
-    val (title, subtitle) = when {
-        checking -> "Kontrol ediliyor" to "Root durumu sorgulanıyor..."
-        result == null -> "Bilinmiyor" to "Henüz kontrol edilmedi"
-        result.rooted == true -> "Root erişimi var" to "Cihazda root (su) kullanılabilir görünüyor"
-        result.rooted == false -> "Root bulunamadı" to "su çalıştırılamadı veya bulunamadı"
-        else -> "Belirsiz" to "Sonuç kesin değil"
+    val rooted = result?.rooted
+    val colors = MiuixTheme.colorScheme
+    val (title, subtitle, container, content) = when {
+        checking -> Quad(
+            "Kontrol ediliyor",
+            "Root durumu sorgulanıyor...",
+            colors.secondaryVariant,
+            colors.onSurface
+        )
+        rooted == true -> Quad(
+            "Root erişimi var",
+            "Cihazda root (su) kullanılabilir görünüyor.",
+            if (isDark(colors)) Color(0xFF1A3825) else Color(0xFFDFFAE4),
+            if (isDark(colors)) Color(0xFFB7F5C6) else Color(0xFF0F5132)
+        )
+        rooted == false -> Quad(
+            "Root bulunamadı",
+            "su çalıştırılamadı veya bulunamadı.",
+            colors.secondaryVariant,
+            colors.onSurface
+        )
+        else -> Quad(
+            "Bilinmiyor",
+            "Henüz kontrol edilmedi veya sonuç belirsiz.",
+            colors.secondaryVariant,
+            colors.onSurface
+        )
     }
 
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(16.dp),
+        color = container
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val badge = when {
+                checking -> "…"
+                rooted == true -> "✓"
+                rooted == false -> "✕"
+                else -> "?"
+            }
+            Box(
+                modifier = Modifier.size(44.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = badge, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = content)
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = content
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = subtitle, color = content.copy(alpha = 0.9f))
+                if (result?.idOutput != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = result.idOutput,
+                        fontSize = 13.sp,
+                        color = content.copy(alpha = 0.85f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun InfoCard(result: RootResult?) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(16.dp)
     ) {
         Text(
-            text = title,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold
+            text = "Bilgiler",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 18.sp,
+            color = MiuixTheme.colorScheme.onSurface
         )
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = subtitle)
-        if (result?.idOutput != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = result.idOutput)
+        Spacer(modifier = Modifier.height(10.dp))
+        if (result == null) {
+            Text(text = "—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+        } else {
+            InfoRow("su yolu", result.suPath ?: "bulunamadı")
+            InfoRow("su sürümü", result.suVersion ?: "bilinmiyor")
+            InfoRow("uid", result.idOutput ?: "alınamadı")
         }
     }
 }
@@ -147,18 +248,20 @@ fun DetailsCard(result: RootResult?) {
         Text(
             text = "Ayrıntılar",
             fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp
+            fontSize = 18.sp,
+            color = MiuixTheme.colorScheme.onSurface
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         if (result == null) {
-            Text(text = "—")
+            Text(text = "—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
         } else {
-            InfoRow("su yolu", result.suPath ?: "bulunamadı")
-            InfoRow("su sürümü", result.suVersion ?: "bilinmiyor")
-            Spacer(modifier = Modifier.height(8.dp))
             result.details.forEach { line ->
-                Text(text = "• $line")
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "• $line",
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 14.sp
+                )
+                Spacer(modifier = Modifier.height(6.dp))
             }
         }
     }
@@ -166,18 +269,30 @@ fun DetailsCard(result: RootResult?) {
 
 @Composable
 fun InfoRow(label: String, value: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
-    ) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Text(
-            text = "$label:",
+            text = label,
             fontWeight = FontWeight.Medium,
-            modifier = Modifier.width(110.dp)
+            fontSize = 13.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
         )
-        Text(text = value)
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            fontSize = 15.sp,
+            color = MiuixTheme.colorScheme.onSurface
+        )
     }
-    Spacer(modifier = Modifier.height(4.dp))
+    Spacer(modifier = Modifier.height(10.dp))
+}
+
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+
+private fun isDark(colors: top.yukonga.miuix.kmp.theme.Colors): Boolean {
+    // simple luminance heuristic
+    val c = colors.background
+    val l = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
+    return l < 0.5f
 }
 
 fun checkRoot(): RootResult {
