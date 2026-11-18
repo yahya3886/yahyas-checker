@@ -1,7 +1,9 @@
 package org.yahya3886.rootchecker
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -12,47 +14,62 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.HelpOutline
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-// CardDefaults not needed (Card takes color directly in miuix 0.4.7)
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
-import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.theme.darkColorScheme
-import top.yukonga.miuix.kmp.theme.lightColorScheme
-import top.yukonga.miuix.kmp.utils.overScrollVertical
-import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import java.io.BufferedReader
 import java.io.File
 import java.io.InputStreamReader
@@ -62,11 +79,50 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            val dark = isSystemInDarkTheme()
-            MiuixTheme(colors = if (dark) darkColorScheme() else lightColorScheme()) {
-                RootCheckerApp()
+            AppTheme {
+                RootApp()
             }
         }
+    }
+}
+
+@Composable
+fun AppTheme(content: @Composable () -> Unit) {
+    val dark = isSystemInDarkTheme()
+    val dynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val context = LocalContext.current
+    val scheme = when {
+        dynamic && dark -> dynamicDarkColorScheme(context)
+        dynamic -> dynamicLightColorScheme(context)
+        dark -> darkColorScheme()
+        else -> lightColorScheme()
+    }
+    MaterialTheme(
+        colorScheme = scheme,
+        content = content
+    )
+}
+
+private enum class Screen { Home, Settings, About }
+
+@Composable
+fun RootApp() {
+    var screen by rememberSaveable { mutableStateOf(Screen.Home) }
+
+    BackHandler(enabled = screen != Screen.Home) {
+        screen = when (screen) {
+            Screen.About -> Screen.Settings
+            else -> Screen.Home
+        }
+    }
+
+    when (screen) {
+        Screen.Home -> HomeScreen(onOpenSettings = { screen = Screen.Settings })
+        Screen.Settings -> SettingsScreen(
+            onBack = { screen = Screen.Home },
+            onOpenAbout = { screen = Screen.About }
+        )
+        Screen.About -> AboutScreen(onBack = { screen = Screen.Settings })
     }
 }
 
@@ -78,8 +134,9 @@ data class RootResult(
     val details: List<String>
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RootCheckerApp() {
+fun HomeScreen(onOpenSettings: () -> Unit) {
     var result by remember { mutableStateOf<RootResult?>(null) }
     var checking by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -95,51 +152,51 @@ fun RootCheckerApp() {
 
     LaunchedEffect(Unit) { runCheck() }
 
-    val scrollBehavior = MiuixScrollBehavior(state = rememberTopAppBarState())
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
-                title = "Yahya's Checker",
+            LargeTopAppBar(
+                title = { Text("Yahya's Checker", fontWeight = FontWeight.SemiBold) },
+                actions = {
+                    IconButton(onClick = { runCheck() }, enabled = !checking) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Yenile")
+                    }
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Ayarlar")
+                    }
+                },
                 scrollBehavior = scrollBehavior
             )
         },
-        contentWindowInsets = WindowInsets.statusBars
-    ) { padding ->
-        val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
+    ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .overScrollVertical()
-                .scrollEndHaptic()
-                .nestedScroll(scrollBehavior.nestedScrollConnection)
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(
-                top = padding.calculateTopPadding() + 12.dp,
-                bottom = bottomPadding + 16.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-            overscrollEffect = null
+                .padding(innerPadding),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            item { StatusCard(result = result, checking = checking) }
+
             item {
-                StatusCard(result = result, checking = checking)
-            }
-            item {
-                Button(
-                    modifier = Modifier.fillMaxWidth(),
+                FilledTonalButton(
                     onClick = { runCheck() },
                     enabled = !checking,
-                    colors = ButtonDefaults.buttonColorsPrimary()
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp)
                 ) {
-                    Text(text = if (checking) "Kontrol ediliyor..." else "Tekrar kontrol et")
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (checking) "Kontrol ediliyor..." else "Tekrar kontrol et")
                 }
             }
-            item {
-                InfoCard(result = result)
-            }
-            item {
-                DetailsCard(result = result)
-            }
+
+            item { InfoCard(result = result) }
+            item { DetailsCard(result = result) }
+            item { Spacer(Modifier.height(12.dp)) }
         }
     }
 }
@@ -147,68 +204,63 @@ fun RootCheckerApp() {
 @Composable
 fun StatusCard(result: RootResult?, checking: Boolean) {
     val rooted = result?.rooted
-    val colors = MiuixTheme.colorScheme
-    val (title, subtitle, container, content) = when {
-        checking -> Quad(
-            "Kontrol ediliyor",
-            "Root durumu sorgulanıyor...",
-            colors.secondaryVariant,
-            colors.onSurface
-        )
-        rooted == true -> Quad(
-            "Root erişimi var",
-            "Cihazda root (su) kullanılabilir görünüyor.",
-            if (isDark(colors)) Color(0xFF1A3825) else Color(0xFFDFFAE4),
-            if (isDark(colors)) Color(0xFFB7F5C6) else Color(0xFF0F5132)
-        )
-        rooted == false -> Quad(
-            "Root bulunamadı",
-            "su çalıştırılamadı veya bulunamadı.",
-            colors.secondaryVariant,
-            colors.onSurface
-        )
-        else -> Quad(
-            "Bilinmiyor",
-            "Henüz kontrol edilmedi veya sonuç belirsiz.",
-            colors.secondaryVariant,
-            colors.onSurface
-        )
+    val cs = MaterialTheme.colorScheme
+    val container = when {
+        checking -> cs.secondaryContainer
+        rooted == true -> cs.primaryContainer
+        rooted == false -> cs.errorContainer
+        else -> cs.surfaceVariant
+    }
+    val onContainer = when {
+        checking -> cs.onSecondaryContainer
+        rooted == true -> cs.onPrimaryContainer
+        rooted == false -> cs.onErrorContainer
+        else -> cs.onSurfaceVariant
+    }
+    val icon: ImageVector = when {
+        checking -> Icons.Outlined.HelpOutline
+        rooted == true -> Icons.Outlined.CheckCircle
+        rooted == false -> Icons.Outlined.ErrorOutline
+        else -> Icons.Outlined.HelpOutline
+    }
+    val title = when {
+        checking -> "Kontrol ediliyor"
+        rooted == true -> "Root erişimi var"
+        rooted == false -> "Root bulunamadı"
+        else -> "Bilinmiyor"
+    }
+    val subtitle = when {
+        checking -> "Root durumu sorgulanıyor..."
+        rooted == true -> "Cihazda root (su) kullanılabilir görünüyor."
+        rooted == false -> "su çalıştırılamadı veya bulunamadı."
+        else -> "Henüz kontrol edilmedi veya sonuç belirsiz."
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(16.dp),
-        color = container
+        colors = CardDefaults.cardColors(containerColor = container, contentColor = onContainer),
+        shape = RoundedCornerShape(28.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            val badge = when {
-                checking -> "…"
-                rooted == true -> "✓"
-                rooted == false -> "✕"
-                else -> "?"
-            }
-            Box(
-                modifier = Modifier.size(44.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = badge, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = content)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp)
+            )
+            Spacer(Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = content
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = subtitle, color = content.copy(alpha = 0.9f))
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium)
                 if (result?.idOutput != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(Modifier.height(8.dp))
                     Text(
-                        text = result.idOutput,
-                        fontSize = 13.sp,
-                        color = content.copy(alpha = 0.85f)
+                        result.idOutput,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -218,50 +270,43 @@ fun StatusCard(result: RootResult?, checking: Boolean) {
 
 @Composable
 fun InfoCard(result: RootResult?) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(16.dp)
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Text(
-            text = "Bilgiler",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-            color = MiuixTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        if (result == null) {
-            Text(text = "—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        } else {
-            InfoRow("su yolu", result.suPath ?: "bulunamadı")
-            InfoRow("su sürümü", result.suVersion ?: "bilinmiyor")
-            InfoRow("uid", result.idOutput ?: "alınamadı")
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Bilgiler", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            if (result == null) {
+                Text("—", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                InfoRow("su yolu", result.suPath ?: "bulunamadı")
+                InfoRow("su sürümü", result.suVersion ?: "bilinmiyor")
+                InfoRow("uid", result.idOutput ?: "alınamadı")
+            }
         }
     }
 }
 
 @Composable
 fun DetailsCard(result: RootResult?) {
-    Card(
+    ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
-        insideMargin = PaddingValues(16.dp)
+        shape = RoundedCornerShape(24.dp)
     ) {
-        Text(
-            text = "Ayrıntılar",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 18.sp,
-            color = MiuixTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        if (result == null) {
-            Text(text = "—", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
-        } else {
-            result.details.forEach { line ->
-                Text(
-                    text = "• $line",
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 14.sp
-                )
-                Spacer(modifier = Modifier.height(6.dp))
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("Ayrıntılar", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(2.dp))
+            if (result == null) {
+                Text("—", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                result.details.forEach { line ->
+                    Text(
+                        text = "• $line",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -269,30 +314,202 @@ fun DetailsCard(result: RootResult?) {
 
 @Composable
 fun InfoRow(label: String, value: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            fontWeight = FontWeight.Medium,
-            fontSize = 13.sp,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            fontSize = 15.sp,
-            color = MiuixTheme.colorScheme.onSurface
-        )
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        Text(value, style = MaterialTheme.typography.bodyLarge)
     }
-    Spacer(modifier = Modifier.height(10.dp))
 }
 
-private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("Ayarlar") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Geri")
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = PaddingValues(vertical = 8.dp)
+        ) {
+            item {
+                SectionHeader("Genel")
+            }
+            item {
+                ElevatedCard(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Tema") },
+                        supportingContent = { Text("Material 3 Expressive · Sistem teması ve dinamik renk (Android 12+)") },
+                        leadingContent = { Icon(Icons.Filled.Settings, contentDescription = null) }
+                    )
+                    HorizontalDivider()
+                    ListItem(
+                        headlineContent = { Text("Otomatik kontrol") },
+                        supportingContent = { Text("Uygulama açıldığında root durumu otomatik kontrol edilir") },
+                        leadingContent = { Icon(Icons.Filled.Security, contentDescription = null) }
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(8.dp)) }
+            item { SectionHeader("Uygulama") }
+            item {
+                ElevatedCard(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    onClick = onOpenAbout
+                ) {
+                    ListItem(
+                        headlineContent = { Text("Hakkında") },
+                        supportingContent = { Text("Uygulama bilgisi, sürüm ve lisans") },
+                        leadingContent = { Icon(Icons.Filled.Info, contentDescription = null) }
+                    )
+                }
+            }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
+}
 
-private fun isDark(colors: top.yukonga.miuix.kmp.theme.Colors): Boolean {
-    // simple luminance heuristic
-    val c = colors.background
-    val l = 0.299f * c.red + 0.587f * c.green + 0.114f * c.blue
-    return l < 0.5f
+@Composable
+fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AboutScreen(onBack: () -> Unit) {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val context = LocalContext.current
+    val versionName = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.0"
+    } catch (_: Exception) { "1.1.0" }
+    val versionCode = try {
+        val p = context.packageManager.getPackageInfo(context.packageName, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) p.longVersionCode else @Suppress("DEPRECATION") p.versionCode.toLong()
+    } catch (_: Exception) { 2L }
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("Hakkında") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Geri")
+                    }
+                },
+                scrollBehavior = scrollBehavior
+            )
+        }
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                    shape = RoundedCornerShape(28.dp)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        Icon(
+                            Icons.Filled.Security,
+                            contentDescription = null,
+                            modifier = Modifier.size(36.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "Yahya's Checker",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "MIUIX'ten Material 3 Expressive tasarıma geçilmiş root kontrol uygulaması.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Uygulama hakkında", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Yahya's Checker, Android cihazlarda root (su) erişimini hızlıca kontrol etmek için geliştirilmiş hafif bir araçtır. " +
+                                "Bilinen su yollarını tarar, `which su`, `su -c id` ve `su -v` çıktılarıyla durumu ve ayrıntıları gösterir.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Arayüz Material 3 (Expressive) bileşenleri ve dinamik renk desteğiyle tasarlanmıştır.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                    Column {
+                        AboutRow("Paket", "org.yahya3886.rootchecker")
+                        HorizontalDivider()
+                        AboutRow("Sürüm", "$versionName ($versionCode)")
+                        HorizontalDivider()
+                        AboutRow("Geliştirici", "yahya3886")
+                    }
+                }
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp)) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Lisans ve atıf", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Bu proje GNU General Public License v3.0 (GPL-3.0) kapsamında lisanslanmıştır. Ayrıntılar için depodaki LICENSE dosyasına bakın.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Arayüz geliştirilirken KernelSU (tiann/KernelSU, GPL-3.0) yönetici uygulamasındaki bazı tasarım desenlerinden ilham alınmıştır: https://github.com/tiann/KernelSU",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
+    }
+}
+
+@Composable
+fun AboutRow(label: String, value: String) {
+    ListItem(
+        headlineContent = { Text(value) },
+        overlineContent = { Text(label) }
+    )
 }
 
 fun checkRoot(): RootResult {
